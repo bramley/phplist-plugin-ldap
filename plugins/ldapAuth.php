@@ -2,9 +2,9 @@
 
 /**
  * ldapAuth plugin for phplist
- * 
+ *
  * This file is a part of phplist-ldap-plugin
- * 
+ *
  * @category  phplist
  * @package   ldapAuth
  * @author    Benoit Donneaux - initial code from bpeabody
@@ -15,8 +15,8 @@
  * This class registers the plugin with phplist and hooks into the authentication and validation
  * of admin users.
  */
-
-require_once __DIR__.'/../accesscheck.php';
+error_reporting(-1);
+//~ require_once __DIR__.'/../accesscheck.php';
 
 class ldapAuth extends phplistPlugin {
   public $name = 'LDAP Authentication Plugin';
@@ -27,16 +27,31 @@ class ldapAuth extends phplistPlugin {
   public $documentationUrl = 'https://github.com/digital-me/phplist-plugin-ldap';
   public $authProvider = true;
 
+  private $phplistAuth;
+
+  public function activate()
+  {
+    global $systemroot;
+    require_once $systemroot .'/phpListAdminAuthentication.php';
+
+    $this->phplistAuth = new phpListAdminAuthentication();
+
+    parent::activate();
+  }
   /**
    * For users in $ldap_except_users this method provides a fallback to the authentication method from phpList core
    */
   function localValidateLogin($login,$password) {
-    require_once __DIR__.'/../phpListAdminAuthentication.php';
-    $core_admin_auth = new phpListAdminAuthentication();
-    return $core_admin_auth->validateLogin($login,$password);
+    //~ require_once __DIR__.'/../phpListAdminAuthentication.php';
+    //~ $core_admin_auth = new phpListAdminAuthentication();
+    //~ return $core_admin_auth->validateLogin($login,$password);
+
+    return $this->phplistAuth->validateLogin($login, $password);
   }
 
   function getPassword($email) {
+    return $this->phplistAuth->getPassword($email);
+
     $email = preg_replace("/[;,\"\']/","",$email);
     $query = sprintf('select email, password, loginname from %s where email = ?', $GLOBALS['tables']['admin']);
     $req = Sql_Query_Params($query, array($email));
@@ -47,6 +62,8 @@ class ldapAuth extends phplistPlugin {
   }
 
   function validateAccount($id) {
+    return $this->phplistAuth->validateAccount($id);
+
     /* can only do this after upgrade, which means
      * that the first login will always fail
     $query
@@ -54,7 +71,7 @@ class ldapAuth extends phplistPlugin {
     . ' from %s'
     . ' where id = ?';
     */
-    
+
     $query
     = ' select id, disabled,password'
     . ' from %s'
@@ -65,12 +82,12 @@ class ldapAuth extends phplistPlugin {
     $data = Sql_Fetch_Row($req);
     if (!$data[0]) {
       return array(0,s("No such account"));
-    } elseif (!ENCRYPT_ADMIN_PASSWORDS && sha1($noaccess_req[2]) != $_SESSION["logindetails"]["passhash"]) {
-      return array(0,s("Your session does not match your password. If you just changed your password, simply log back in."));
+    //~ } elseif (!ENCRYPT_ADMIN_PASSWORDS && sha1($noaccess_req[2]) != $_SESSION["logindetails"]["passhash"]) {
+      //~ return array(0,s("Your session does not match your password. If you just changed your password, simply log back in."));
     } elseif ($data[1]) {
       return array(0,s("your account has been disabled"));
     }
-    
+
     ## do this seperately from above, to avoid lock out when the DB hasn't been upgraded.
     ## so, ignore the error
     $query
@@ -85,7 +102,7 @@ class ldapAuth extends phplistPlugin {
     } else {
       $data = array();
     }
-    
+
     if (!empty($data[0])) {
       $_SESSION['privileges'] = unserialize($data[0]);
     }
@@ -93,26 +110,36 @@ class ldapAuth extends phplistPlugin {
   }
 
   function adminName($id) {
+    return $this->phplistAuth->adminName($id);
+
     $req = Sql_Fetch_Row_Query(sprintf('select loginname from %s where id = %d',$GLOBALS["tables"]["admin"],$id));
     return $req[0] ? $req[0] : s("Nobody");
   }
-  
+
   function adminEmail($id) {
+    return $this->phplistAuth->adminEmail($id);
+
     $req = Sql_Fetch_Row_Query(sprintf('select email from %s where id = %d',$GLOBALS["tables"]["admin"],$id));
     return $req[0] ? $req[0] : "";
-  }    
+  }
 
   function adminIdForEmail($email) { #Obtain admin Id from a given email address.
+    return $this->phplistAuth->adminIdForEmail($email);
+
     $req = Sql_Fetch_Row_Query(sprintf('select id from %s where email = "%s"',$GLOBALS["tables"]["admin"],sql_escape($email)));
     return $req[0] ? $req[0] : "";
-  } 
-  
+  }
+
   function isSuperUser($id) {
+    return $this->phplistAuth->isSuperUser($id);
+
     $req = Sql_Fetch_Row_Query(sprintf('select superuser from %s where id = %d',$GLOBALS["tables"]["admin"],$id));
     return $req[0];
   }
 
   function listAdmins() {
+    return $this->phplistAuth->listAdmins();
+
     $result = array();
     $req = Sql_Query("select id,loginname from {$GLOBALS["tables"]["admin"]} order by loginname");
     while ($row = Sql_Fetch_Array($req)) {
@@ -245,11 +272,11 @@ class ldapAuth extends phplistPlugin {
           return array($admindata["id"],"OK");
         }
       }
-      
+
       //echo $myResult[0] . " - " . $myResult[1];
-      
+
       // no luck - game over
-      return array(0, 'Authentication failed');
+      return array(0, 'Authentication failed'. $myResult[0]);
       //return $myResult;
 
     }
@@ -300,6 +327,7 @@ class ldapAuth extends phplistPlugin {
 
     // specify LDAP version protocol
     ldap_set_option($myLdapConn,LDAP_OPT_PROTOCOL_VERSION,$aLdapVer);
+    ldap_set_option(NULL, LDAP_OPT_DEBUG_LEVEL, 7);
 
     // if the connection succeeded
     if ($myLdapConn) {
@@ -318,6 +346,7 @@ class ldapAuth extends phplistPlugin {
       else {
         // search for the user in question
         $myLdapSearchResult = ldap_search($myLdapConn, $aBaseDn, $aFilter);
+        //var_dump($myLdapSearchResult);
         if (!$myLdapSearchResult) {
           $myResult = array(0, 'User not found');
         }
@@ -325,11 +354,12 @@ class ldapAuth extends phplistPlugin {
         else {
           // get the details about the result entries
           $myLdapEntries = ldap_get_entries($myLdapConn, $myLdapSearchResult);
+          //var_dump( $myLdapEntries);
           if ($myLdapEntries['count'] > 0) {
             // now try another bind as the user that we found
             $myBindResult = ldap_bind($myLdapConn, $myLdapEntries[0]['dn'], $aUserPw);
             if (!$myBindResult) {
-              $myResult = array(0, 'Authentication failed');
+              $myResult = array(0, 'Authentication failed' . $myLdapEntries[0]['dn']);
             }
             else {
               // all good
