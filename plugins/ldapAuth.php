@@ -145,7 +145,7 @@ class ldapAuth extends phplistPlugin
                             'settings' => true
                         );
                     }
-                    Sql_Query(sprintf('insert into %s (loginname,namelc,created,privileges) values("%s","%s",now(),"%s")',
+                    Sql_Query(sprintf('insert into %s (loginname,namelc,email,created,privileges) values("%s","%s","",now(),"%s")',
                     $tables["admin"],addslashes($login),addslashes($login),sql_escape(serialize($ldap_default_privs))));
                     $id = Sql_Insert_Id();
                     $admindata = Sql_Fetch_Array_Query(sprintf('select password,disabled,id from %s where loginname = "%s"',$GLOBALS["tables"]["admin"],addslashes($login)));
